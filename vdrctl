@@ -16,7 +16,7 @@ my $argsdir  = `pkg-config --variable argsdir vdr`;
 chomp($argsdir);
 $argsdir= '/etc/vdr/conf.d' unless $argsdir;
 
-my $availdir = '/etc/vdr/conf.avail';
+my $availdir = "$argsdir/../conf.avail";
 
 my $editor   = $ENV{EDITOR};
 $editor = 'nano' unless $editor;
