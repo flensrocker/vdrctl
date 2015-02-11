@@ -21,9 +21,11 @@ my $availdir = "$argsdir/../conf.avail";
 my $editor   = $ENV{EDITOR};
 $editor = 'nano' unless $editor;
 
+my $force;
 GetOptions(
   "argsdir=s"  => \$argsdir,
   "availdir=s" => \$availdir,
+  "force"      => \$force,
   "help"       => \&help,
   "version"    => \&version) or die("Error in command line arguments\n");
 
@@ -104,12 +106,18 @@ sub disable {
   my $file = $_[0];
 
   # $file may be not the exact filename.
-  unless ($available{$file}) {
-    my $glob = glob("$availdir/[0-9]*-$file.conf");
+  unless ($enabled{$file}) {
+    my $glob = glob("$argsdir/[0-9][0-9]*-$file.conf");
     $file = basename($glob) if $glob;
   }
 
-  unlink("$argsdir/$file") or die("Cannot delete $file\n");
+  # Unlink only if it is a symlink or --force is set.
+  if (-l "$argsdir/$file" || $force) {
+    unlink("$argsdir/$file") or die("Cannot delete $file\n");
+  }
+  else {
+    die("$file is not a symlink. Use --force to disable it anyways\n");
+  }
 }
 
 sub edit {
