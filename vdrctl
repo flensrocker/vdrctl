@@ -25,13 +25,12 @@ GetOptions(
   "argsdir=s"  => \$argsdir,
   "availdir=s" => \$availdir,
   "help"       => \&help,
-  "version"    => \&version) or die("Error in command line arguments");
+  "version"    => \&version) or die("Error in command line arguments\n");
 
 my %available;
 foreach my $file (glob("$availdir/*.conf")) {
   $available{basename($file)} = $file;
 }
-
 my %enabled;
 foreach my $file (glob("$argsdir/*.conf")) {
   $enabled{basename($file)} = $file;
@@ -89,14 +88,28 @@ sub list_disabled {
 
 sub enable {
   my $file = $_[0];
+
+  # $file may be not the exact filename.
+  unless ($available{$file}) {
+    my $glob = glob("$availdir/[0-9]*-$file.conf");
+    $file = basename($glob) if $glob;
+  }
+
   my $relpath = File::Spec->abs2rel($available{$file}, $argsdir);
   symlink($relpath, "$argsdir/$file")
-    or die "Cannot create symlink to $argsdir/$file";
+    or die "Cannot create symlink to $argsdir/$file\n";
 }
 
 sub disable {
   my $file = $_[0];
-  unlink($enabled{$file});
+
+  # $file may be not the exact filename.
+  unless ($available{$file}) {
+    my $glob = glob("$availdir/[0-9]*-$file.conf");
+    $file = basename($glob) if $glob;
+  }
+
+  unlink("$argsdir/$file") or die("Cannot delete $file\n");
 }
 
 sub edit {
