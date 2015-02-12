@@ -4,21 +4,22 @@ use strict;
 use warnings;
 use File::Basename;
 use File::Path;
+use File::Spec::Functions qw(abs2rel);
 use Getopt::Long qw(:config pass_through);
 use Pod::PlainText;
 use Switch 'Perl6';
 use Term::ANSIColor;
 
 my $PROGNAME = 'vdrctl';
-my $VERSION = '0.0.1';
+my $VERSION  = '0.0.1';
 
-my $argsdir  = `pkg-config --variable argsdir vdr`;
+my $argsdir = `pkg-config --variable argsdir vdr`;
 chomp($argsdir);
-$argsdir= '/etc/vdr/conf.d' unless $argsdir;
+$argsdir = '/etc/vdr/conf.d' unless $argsdir;
 
 my $availdir = "$argsdir/../conf.avail";
 
-my $editor   = $ENV{EDITOR};
+my $editor = $ENV{EDITOR};
 $editor = 'nano' unless $editor;
 
 my $force;
@@ -27,50 +28,62 @@ GetOptions(
   "availdir=s" => \$availdir,
   "force"      => \$force,
   "help"       => \&help,
-  "version"    => \&version) or die("Error in command line arguments\n");
+  "version"    => \&version
+) or die("Error in command line arguments\n");
 
+chdir($availdir);
 my %available;
-foreach my $file (glob("$availdir/*.conf")) {
-  $available{basename($file)} = $file;
+foreach my $file (glob('*.conf')) {
+  $available{$file} = "$availdir/$file";
 }
+
+# Switch back to $argsdir and stay there
+chdir($argsdir);
 my %enabled;
-foreach my $file (glob("$argsdir/*.conf")) {
-  $enabled{basename($file)} = $file;
+foreach my $file (glob('*.conf')) {
+  $enabled{$file} = "$argsdir/$file";
 }
 
 given ($ARGV[0]) {
   when 'disable' { disable($ARGV[1]); }
   when 'edit'    { edit($ARGV[1]); }
   when 'enable'  { enable($ARGV[1]); }
-  when 'list'    { given ($ARGV[1]) {
-                     when '--enabled'  { list_enabled(); }
-                     when '--disabled' { list_disabled(); }
-                     default           { list(); }
-                   }
-                 }
-  default        { list(); }
+  when 'list' {
+    given ($ARGV[1]) {
+      when '--enabled'  { list_enabled(); }
+      when '--disabled' { list_disabled(); }
+      default           { list(); }
+    }
+  }
+  default { list(); }
 }
 
 sub list {
   print sprintf('%-44s%s', 'ARGUMENT FILE', 'STATE'), "\n";
 
   my %merged = (%available, %enabled);
-  foreach my $file (sort(keys (%merged))) {
+
+  foreach my $file (sort(keys(%merged))) {
 
     # Filter out dead symlinks
     next unless (-s $merged{$file});
 
     print sprintf('%-44s', $file);
 
-    # enabled == file exists in argsdir and availdir
-    print colored['bright_green bold'], 'enabled'
-      if $enabled{$file} && $available{$file};
+    if (!$enabled{$file}) {
 
-    # disabled == file does not exist in argsdir
-    print colored['bright_red bold'], 'disabled' unless $enabled{$file};
+      # Not in $argsdir --> disabled
+      print colored['bright_red bold'], 'disabled';
+    }
+    elsif (!$available{$file}) {
 
-    # static == file only exists in argsdir
-    print 'static' if (! $available{$file});
+      # Not in $availdir --> static
+      print 'static';
+    }
+    else {
+      # In both directories --> enabled
+      print colored['bright_green bold'], 'enabled';
+    }
 
     print "\n";
   }
@@ -97,8 +110,7 @@ sub enable {
     $file = basename($glob) if $glob;
   }
 
-  my $relpath = File::Spec->abs2rel($available{$file}, $argsdir);
-  symlink($relpath, "$argsdir/$file")
+  symlink(abs2rel("$availdir/$file"), $file)
     or die "Cannot create symlink to $argsdir/$file\n";
 }
 
@@ -107,13 +119,13 @@ sub disable {
 
   # $file may be not the exact filename.
   unless ($enabled{$file}) {
-    my $glob = glob("$argsdir/[0-9][0-9]*-$file.conf");
-    $file = basename($glob) if $glob;
+    my $glob = glob("[0-9][0-9]*-$file.conf");
+    $file = $glob if $glob;
   }
 
   # Unlink only if it is a symlink or --force is set.
-  if (-l "$argsdir/$file" || $force) {
-    unlink("$argsdir/$file") or die("Cannot delete $file\n");
+  if (-l $file or $force) {
+    unlink($file) or die("Cannot delete $file\n");
   }
   else {
     die("$file is not a symlink. Use --force to disable it anyways\n");
