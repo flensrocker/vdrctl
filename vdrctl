@@ -1,90 +1,96 @@
 #!/usr/bin/perl
 
+use v6;
 use strict;
-use warnings;
-use File::Basename;
-use File::Path;
-use Getopt::Long qw(:config pass_through);
-use Pod::PlainText;
-use Switch 'Perl6';
 use Term::ANSIColor;
+
+multi MAIN(Bool :$help, Bool:$version) {
+  help() if $help;
+  version() if $version;
+}
+multi MAIN('enable', $conf) {
+  enable($conf)
+}
+multi MAIN('edit', $conf) {
+  edit($conf)
+}
+my Bool $force;
+multi MAIN('disable', $conf, Bool :$force) {
+  disable($conf)
+}
+multi MAIN('list', Bool:$disabled, Bool:$enabled) {
+  if ($disabled) {
+    list_disabled();
+  }
+  elsif ($enabled) {
+    list_enabled();
+  }
+  else {
+    list();
+  }
+}
 
 my $PROGNAME = 'vdrctl';
 my $VERSION = '0.0.1';
 
-my $argsdir  = `pkg-config --variable argsdir vdr`;
+my $argsdir  = QX('pkg-config --variable argsdir vdr');
 chomp($argsdir);
 $argsdir= '/etc/vdr/conf.d' unless $argsdir;
 
 my $availdir = "$argsdir/../conf.avail";
 
-my $editor   = $ENV{EDITOR};
+my $editor   = %*ENV{'EDITOR'};
 $editor = 'nano' unless $editor;
 
-my $force;
-GetOptions(
-  "argsdir=s"  => \$argsdir,
-  "availdir=s" => \$availdir,
-  "force"      => \$force,
-  "help"       => \&help,
-  "version"    => \&version) or die("Error in command line arguments\n");
-
 my %available;
-foreach my $file (glob("$availdir/*.conf")) {
-  $available{basename($file)} = $file;
+my $dh = opendir($availdir);
+$dh.say();
+exit;
+for "$availdir/*.conf".glob -> $file {
+  %available{IO::Path.new($file).basename} = $file;
 }
 my %enabled;
-foreach my $file (glob("$argsdir/*.conf")) {
-  $enabled{basename($file)} = $file;
+for <"$argsdir/*.conf"> -> $file {
+  %enabled{IO::Path.new($file).basename} = $file;
 }
 
-given ($ARGV[0]) {
-  when 'disable' { disable($ARGV[1]); }
-  when 'edit'    { edit($ARGV[1]); }
-  when 'enable'  { enable($ARGV[1]); }
-  when 'list'    { given ($ARGV[1]) {
-                     when '--enabled'  { list_enabled(); }
-                     when '--disabled' { list_disabled(); }
-                     default           { list(); }
-                   }
-                 }
-  default        { list(); }
-}
+%available.say();
+exit;
 
 sub list {
   print sprintf('%-44s%s', 'ARGUMENT FILE', 'STATE'), "\n";
 
   my %merged = (%available, %enabled);
-  foreach my $file (sort(keys (%merged))) {
+  for sort(keys (%merged)) -> $file {
 
     # Filter out dead symlinks
-    next unless (-s $merged{$file});
+    next unless (%merged{$file}.IO ~~ :s);
 
     print sprintf('%-44s', $file);
 
     # enabled == file exists in argsdir and availdir
-    print colored['bright_green bold'], 'enabled'
-      if $enabled{$file} && $available{$file};
+    print 'enabled'.colored['bright_green bold']
+      if %enabled{$file} && %available{$file};
 
     # disabled == file does not exist in argsdir
-    print colored['bright_red bold'], 'disabled' unless $enabled{$file};
+    print 'disabled'.colored['bright_red bold'] unless %enabled{$file};
 
     # static == file only exists in argsdir
-    print 'static' if (! $available{$file});
+    print 'static' unless %available{$file};
 
     print "\n";
   }
 }
 
 sub list_enabled {
-  foreach my $file (sort(keys %enabled)) {
-    print "$file\n" if $enabled{$file} && $available{$file};
+  for sort(keys %enabled) -> $file {
+    print "$file\n" if %enabled{$file} && %available{$file};
   }
 }
 
 sub list_disabled {
-  foreach my $file (sort(keys %available)) {
-    print "$file\n" unless $enabled{$file};
+  for sort(keys %available) -> $file {
+    print "$file\n" unless %enabled{$file};
   }
 }
 
@@ -92,12 +98,12 @@ sub enable {
   my $file = $_[0];
 
   # $file may be not the exact filename.
-  unless ($available{$file}) {
-    my $glob = glob("$availdir/[0-9]*-$file.conf");
-    $file = basename($glob) if $glob;
+  unless (%available{$file}) {
+    my $glob = <"$availdir/[0-9]*-$file.conf">;
+    $file = IO::Path.new($glob).basename if $glob;
   }
 
-  my $relpath = File::Spec->abs2rel($available{$file}, $argsdir);
+  my $relpath = File::Spec.abs2rel(%available{$file}, $argsdir);
   symlink($relpath, "$argsdir/$file")
     or die "Cannot create symlink to $argsdir/$file\n";
 }
@@ -106,13 +112,13 @@ sub disable {
   my $file = $_[0];
 
   # $file may be not the exact filename.
-  unless ($enabled{$file}) {
-    my $glob = glob("$argsdir/[0-9][0-9]*-$file.conf");
-    $file = basename($glob) if $glob;
+  unless (%enabled{$file}) {
+    my $glob = <"$argsdir/[0-9][0-9]*-$file.conf">;
+    $file = IO::Path.new($glob).basename if $glob;
   }
 
   # Unlink only if it is a symlink or --force is set.
-  if (-l "$argsdir/$file" || $force) {
+  if (("$argsdir/$file".IO ~~ :l) || ($force)) {
     unlink("$argsdir/$file") or die("Cannot delete $file\n");
   }
   else {
@@ -122,11 +128,11 @@ sub disable {
 
 sub edit {
   my $file = $_[0];
-  system($editor, "$availdir/$file");
+  shell($editor, "$availdir/$file");
 }
 
 sub help {
-  Pod::PlainText->new(sentence => 0)->parse_from_file($0);
+#   Pod::PlainText->new(sentence => 0)->parse_from_file($0);
   exit;
 }
 
@@ -134,72 +140,3 @@ sub version {
   print "$PROGNAME $VERSION\n";
   exit;
 }
-
-__END__
-
-=head1 NAME
-
-vdrctl - Control vdr argument files
-
-=head1 DESCRIPTION
-
-B<vdrctl> adds/removes symlinks or list the available or active plugins of vdr.
-
-In the following ARGSDIR is the configured conf.d path or read by pkg-config
-
-AVAILDIR is /etc/vdr/conf.avail
-
-ARGSDIR is /etc/vdr/conf.d
-
-=head2 Global options
-
-=over 5
-
-=item B<--argsdir>=DIR
-
-read files from <directory> instead of ARGSDIR
-
-=item B<--availdir>=DIR
-
-read files from <directory> instead of AVAILDIR
-
-=item B<--help>
-
-Display this help and exit
-
-=item B<--version>
-
-Output version information and exit
-
-=head2 Commands
-
-=item B<list>
-
-
-read files from <directory> instead of AVAILDIR
-
-=over 5
-
-=item B<--enabled>
-
-print a sorted list of all configuration files from ARGSDIR
-
-=item B<--disabled>
-
-print a sorted list of all configuration files from AVAILDIR which are not symlinked to ARGSDIR
-
-=back
-
-=item B<enable> <filename>
-
-create a symlink in ARGSDIR pointing to the file in AVAILDIR
-
-=item B<disable> <filename>
-
-remove the symlink in ARGSDIR
-
-=item B<edit> <filename>
-
-start an editor so the user can add/remove options to the file in AVAILDIR
-
-=back
