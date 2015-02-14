@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 use File::Basename;
-use File::Path;
 use File::Spec::Functions qw(abs2rel);
 use File::Temp qw(tempfile);
 use Getopt::Long qw(:config pass_through);
@@ -11,7 +10,7 @@ use Pod::PlainText;
 use Term::ANSIColor;
 
 my $PROGNAME = 'vdrctl';
-my $VERSION  = '0.0.1';
+my $VERSION  = '0.0.3';
 
 my $argsdir = `pkg-config --variable argsdir vdr`;
 chomp($argsdir);
@@ -31,47 +30,56 @@ GetOptions(
   "version"    => \&version
 ) or die("Error in command line arguments\n");
 
-chdir($availdir);
 my %available;
-foreach my $file (glob('*.conf')) {
-  $available{$file} = "$availdir/$file";
+foreach my $file (<"$availdir/*.conf">) {
+  my $basename = basename($file);
+
+  # Try 50-name.conf
+  my ($priority, $name) = $basename =~ /^([0-9]*?)-(.*?).conf$/;
+
+  # Try name.conf
+  ($name) = $basename =~ /^(.*?).conf$/ unless $name;
+  $available{$name} = $basename;
 }
 
-# Switch back to $argsdir and stay there
-chdir($argsdir);
 my %enabled;
-foreach my $file (glob('*.conf')) {
-  $enabled{$file} = "$argsdir/$file";
+foreach my $file (<"$argsdir/*.conf">) {
+  my $basename = basename($file);
+
+  # Try 50-name.conf
+  my ($priority, $name) = $basename =~ /^([0-9]*?)-(.*?).conf$/;
+
+  # Try name.conf
+  ($name) = $basename =~ /^(.*?).conf$/ unless $name;
+  $enabled{$name} = $basename;
 }
 
-if    ($ARGV[0] eq 'disable') { disable($ARGV[1]); }
-elsif ($ARGV[0] eq 'edit')    { edit($ARGV[1]); }
-elsif ($ARGV[0] eq 'enable')  { enable($ARGV[1]); }
-elsif ($ARGV[0] eq 'list') {
-  if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
-  elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
-  else                             { list(); }
+if ($ARGV[1]) {
+  if    ($ARGV[0] eq 'disable') { disable($ARGV[1]); }
+  elsif ($ARGV[0] eq 'edit')    { edit($ARGV[1]); }
+  elsif ($ARGV[0] eq 'enable')  { enable($ARGV[1]); }
+  elsif ($ARGV[0] eq 'list') {
+    if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
+    elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
+    else                             { list(); }
+  }
 }
 else { list(); }
 
 sub list {
-  print sprintf('%-44s%s', 'ARGUMENT FILE', 'STATE'), "\n";
+  print sprintf('%-22s%s', 'PLUGIN', 'STATE'), "\n";
 
   my %merged = (%available, %enabled);
 
-  foreach my $file (sort(keys(%merged))) {
+  foreach my $plugin (sort(keys(%merged))) {
+    print sprintf('%-22s', $plugin);
 
-    # Filter out dead symlinks
-    next unless (-s $merged{$file});
-
-    print sprintf('%-44s', $file);
-
-    if (!$enabled{$file}) {
+    if (!$enabled{$plugin}) {
 
       # Not in $argsdir --> disabled
       print colored['bright_red bold'], 'disabled';
     }
-    elsif (!$available{$file}) {
+    elsif (!$available{$plugin}) {
 
       # Not in $availdir --> static
       print 'static';
@@ -98,78 +106,68 @@ sub list_disabled {
 }
 
 sub enable {
-  my $file = $_[0];
+  my $plugin = $_[0];
+  my $filename = $available{$plugin} or die("$plugin is unknown\n");
 
   # $file may be not the exact filename.
-  unless ($available{$file}) {
-    my $glob = glob("$availdir/[0-9]*-$file.conf");
-    $file = basename($glob) if $glob;
-  }
-
-  symlink(abs2rel("$availdir/$file"), $file)
-    or die "Cannot create symlink to $argsdir/$file\n";
+  symlink(abs2rel("$availdir/$filename"), "$argsdir/$filename")
+    or die "Cannot create symlink to $argsdir/$filename\n";
 }
 
 sub disable {
-  my $file = $_[0];
-
-  # $file may be not the exact filename.
-  unless ($enabled{$file}) {
-    my $glob = glob("[0-9][0-9]*-$file.conf");
-    $file = $glob if $glob;
-  }
+  my $plugin = $_[0];
+  my $filename = $enabled{$plugin} or die("$plugin is unknown\n");
 
   # Unlink only if it is a symlink or --force is set.
-  if (-l $file or $force) {
-    unlink($file) or die("Cannot delete $file\n");
+  if (-l "$argsdir/$filename" or $force) {
+    unlink("$argsdir/$filename") or die("Cannot delete $filename\n");
   }
   else {
-    die("$file is not a symlink. Use --force to disable it anyways\n");
+    die("$filename is not a symlink. Use --force to disable it anyways\n");
   }
 }
 
 sub edit {
-
-  # HACK!!! NOT FINAL!!!
-  # Should differentiate between plugin and filename globally and more reliable.
-  my $plugname = $_[0];
-  my $file     = glob("$availdir/[0-9][0-9]*-$plugname.conf");
+  my $plugin   = $_[0];
+  my $filename = $available{$plugin} or die("$plugin is unknown\n");
+  my $filepath = "$availdir/$filename";
 
   # Open new tempfile writable, enable autodelete before program exit
-  my ($tmp_write, $filename) = tempfile("/tmp/$plugname-XXXX", UNLINK => 1);
+  my ($tmp_write, $tmpfile) = tempfile("/tmp/$plugin-XXXX", UNLINK => 1);
 
-  # Open requested config file readable
-  open(my $conf_read, '<', $file) or die "Couldn't open $availdir/$file, $!\n";
+  # Open config file (readable)
+  open(my $conf_read, '<', $filepath) or die "Couldn't open $filepath, $!\n";
   while (<$conf_read>) {
     unless ($_ =~ /^\n$/) {
       print $tmp_write $_;
     }
   }
-  close($conf_read);
-  print $tmp_write "\n";    # One newline to separate the config from the info
+  close($conf_read);        # Close config file
+  print $tmp_write "\n";    # One newline to separate config from info
 
   # Open STDOUT of vdr
-  open(my $vdr, '-|', 'vdr', '-P', $plugname, '-h');
+  open(my $vdr, '-|', 'vdr', '-P', $plugin, '-h');
   my $reachedPlugin;
   while (<$vdr>) {
-    $reachedPlugin = 1 if $_ =~ /^$plugname/;
+    $reachedPlugin = 1 if $_ =~ /^$plugin/;
     print $tmp_write "#$PROGNAME $_" if $reachedPlugin;
   }
-  close($vdr);
+  close($vdr);              # Close STDOUT of vdr
 
-  system($editor, $filename);
+  system($editor, $tmpfile);    # Open tempfile in $editor
 
-  #Open tempfile readable
-  open(my $tmp_read, '<', $filename);
+  # Open tempfile (readable)
+  open(my $tmp_read, '<', $tmpfile);
 
-  #Open requested config file writable
-  open(my $conf_write, '>', $file) or die "Couldn't open $availdir/$file, $!\n";
+  # Open config file (writable)
+  open(my $conf_write, '>', $filepath) or die "Couldn't open $filepath, $!\n";
   while (<$tmp_read>) {
-    unless ($_ =~ /^#$PROGNAME/ or $_ =~ /^\n$/) {
+    unless ($_ =~ /^#$PROGNAME/ or $_ =~ /^\n$/)
+    {                           # Skip our own lines and empty lines
       print $conf_write $_;
     }
   }
-  close($conf_read);
+  close($conf_read);            # Close config file
 }
 
 sub help {
@@ -194,9 +192,9 @@ B<vdrctl> adds/removes symlinks or list the available or active plugins of vdr.
 
 In the following ARGSDIR is the configured conf.d path or read by pkg-config
 
-AVAILDIR is /etc/vdr/conf.avail
-
 ARGSDIR is /etc/vdr/conf.d
+
+AVAILDIR is /etc/vdr/conf.d/../conf.avail
 
 =head2 Global options
 
@@ -222,31 +220,30 @@ Output version information and exit
 
 =item B<list>
 
-
-read files from <directory> instead of AVAILDIR
+Show all available plugins and their current status (enabled, disabled, static)
 
 =over 5
 
 =item B<--enabled>
 
-print a sorted list of all configuration files from ARGSDIR
+Print an unformatted list of all enabled plugins
 
 =item B<--disabled>
 
-print a sorted list of all configuration files from AVAILDIR which are not symlinked to ARGSDIR
+Print an unformatted list of all disabled plugins
 
 =back
 
 =item B<enable> <filename>
 
-create a symlink in ARGSDIR pointing to the file in AVAILDIR
+Enable one plugin by creating a symlink to the ARGSDIR
 
 =item B<disable> <filename>
 
-remove the symlink in ARGSDIR
+Disable one plugin by removing the symlink from ARGSDIR
 
 =item B<edit> <filename>
 
-start an editor so the user can add/remove options to the file in AVAILDIR
+Start an editor to allow modifications to the selected configfile
 
 =back
