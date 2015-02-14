@@ -8,7 +8,6 @@ use File::Spec::Functions qw(abs2rel);
 use File::Temp qw(tempfile);
 use Getopt::Long qw(:config pass_through);
 use Pod::PlainText;
-use Switch 'Perl6';
 use Term::ANSIColor;
 
 my $PROGNAME = 'vdrctl';
@@ -45,19 +44,15 @@ foreach my $file (glob('*.conf')) {
   $enabled{$file} = "$argsdir/$file";
 }
 
-given ($ARGV[0]) {
-  when 'disable' { disable($ARGV[1]); }
-  when 'edit'    { edit($ARGV[1]); }
-  when 'enable'  { enable($ARGV[1]); }
-  when 'list' {
-    given ($ARGV[1]) {
-      when '--enabled'  { list_enabled(); }
-      when '--disabled' { list_disabled(); }
-      default           { list(); }
-    }
-  }
-  default { list(); }
+if    ($ARGV[0] eq 'disable') { disable($ARGV[1]); }
+elsif ($ARGV[0] eq 'edit')    { edit($ARGV[1]); }
+elsif ($ARGV[0] eq 'enable')  { enable($ARGV[1]); }
+elsif ($ARGV[0] eq 'list') {
+  if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
+  elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
+  else                             { list(); }
 }
+else { list(); }
 
 sub list {
   print sprintf('%-44s%s', 'ARGUMENT FILE', 'STATE'), "\n";
@@ -134,30 +129,31 @@ sub disable {
 }
 
 sub edit {
+
   # HACK!!! NOT FINAL!!!
   # Should differentiate between plugin and filename globally and more reliable.
   my $plugname = $_[0];
-  my $file = glob("$availdir/[0-9][0-9]*-$plugname.conf");
+  my $file     = glob("$availdir/[0-9][0-9]*-$plugname.conf");
 
   # Open new tempfile writable, enable autodelete before program exit
   my ($tmp_write, $filename) = tempfile("/tmp/$plugname-XXXX", UNLINK => 1);
 
   # Open requested config file readable
-  open(my $conf_read, '<', $file) or die "Couldn't open $availdir/$file, $!\n";;
+  open(my $conf_read, '<', $file) or die "Couldn't open $availdir/$file, $!\n";
   while (<$conf_read>) {
     unless ($_ =~ /^\n$/) {
       print $tmp_write $_;
     }
   }
   close($conf_read);
-  print $tmp_write "\n"; # One newline to separate the config from the info
+  print $tmp_write "\n";    # One newline to separate the config from the info
 
   # Open STDOUT of vdr
   open(my $vdr, '-|', 'vdr', '-P', $plugname, '-h');
   my $reachedPlugin;
   while (<$vdr>) {
-      $reachedPlugin = 1 if $_ =~ /^$plugname/;
-      print $tmp_write "#$PROGNAME $_" if $reachedPlugin;
+    $reachedPlugin = 1 if $_ =~ /^$plugname/;
+    print $tmp_write "#$PROGNAME $_" if $reachedPlugin;
   }
   close($vdr);
 
@@ -165,6 +161,7 @@ sub edit {
 
   #Open tempfile readable
   open(my $tmp_read, '<', $filename);
+
   #Open requested config file writable
   open(my $conf_write, '>', $file) or die "Couldn't open $availdir/$file, $!\n";
   while (<$tmp_read>) {
