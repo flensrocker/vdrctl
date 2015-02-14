@@ -5,6 +5,7 @@ use warnings;
 use File::Basename;
 use File::Path;
 use File::Spec::Functions qw(abs2rel);
+use File::Temp qw(tempfile);
 use Getopt::Long qw(:config pass_through);
 use Pod::PlainText;
 use Switch 'Perl6';
@@ -20,7 +21,7 @@ $argsdir = '/etc/vdr/conf.d' unless $argsdir;
 my $availdir = "$argsdir/../conf.avail";
 
 my $editor = $ENV{EDITOR};
-$editor = 'nano' unless $editor;
+$editor = 'vi' unless $editor;
 
 my $force;
 GetOptions(
@@ -133,8 +134,45 @@ sub disable {
 }
 
 sub edit {
-  my $file = $_[0];
-  system($editor, "$availdir/$file");
+  # HACK!!! NOT FINAL!!!
+  # Should differentiate between plugin and filename globally and more reliable.
+  my $plugname = $_[0];
+  my $file = glob("$availdir/[0-9][0-9]*-$plugname.conf");
+
+  # Open new tempfile writable, enable autodelete before program exit
+  my ($tmp_write, $filename) = tempfile("/tmp/$plugname-XXXX", UNLINK => 1);
+
+  # Open requested config file readable
+  open(my $conf_read, '<', $file) or die "Couldn't open $availdir/$file, $!\n";;
+  while (<$conf_read>) {
+    unless ($_ =~ /^\n$/) {
+      print $tmp_write $_;
+    }
+  }
+  close($conf_read);
+  print $tmp_write "\n"; # One newline to separate the config from the info
+
+  # Open STDOUT of vdr
+  open(my $vdr, '-|', 'vdr', '-P', $plugname, '-h');
+  my $reachedPlugin;
+  while (<$vdr>) {
+      $reachedPlugin = 1 if $_ =~ /^$plugname/;
+      print $tmp_write "#$PROGNAME $_" if $reachedPlugin;
+  }
+  close($vdr);
+
+  system($editor, $filename);
+
+  #Open tempfile readable
+  open(my $tmp_read, '<', $filename);
+  #Open requested config file writable
+  open(my $conf_write, '>', $file) or die "Couldn't open $availdir/$file, $!\n";
+  while (<$tmp_read>) {
+    unless ($_ =~ /^#$PROGNAME/ or $_ =~ /^\n$/) {
+      print $conf_write $_;
+    }
+  }
+  close($conf_read);
 }
 
 sub help {
