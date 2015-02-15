@@ -32,44 +32,43 @@ GetOptions(
 
 my %available;
 foreach my $file (<"$availdir/*.conf">) {
-  my $basename = basename($file);
 
   # Try 50-name.conf
-  my ($priority, $name) = $basename =~ /^([0-9]*?)-(.*?).conf$/;
+  my ($priority, $name) = basename($file) =~ /^([0-9]*?)-(.*?).conf$/;
 
   # Try name.conf
-  ($name) = $basename =~ /^(.*?).conf$/ unless $name;
-  $available{$name} = $basename;
+  ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+  $available{$name} = $file;
 }
 
 my %enabled;
 foreach my $file (<"$argsdir/*.conf">) {
-  my $basename = basename($file);
 
   # Try 50-name.conf
-  my ($priority, $name) = $basename =~ /^([0-9]*?)-(.*?).conf$/;
+  my ($priority, $name) = basename($file) =~ /^([0-9]*?)-(.*?).conf$/;
 
   # Try name.conf
-  ($name) = $basename =~ /^(.*?).conf$/ unless $name;
-  $enabled{$name} = $basename;
+  ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+  $enabled{$name} = $file;
 }
+
+my %merged = (%available, %enabled);
 
 if ($ARGV[1]) {
   if    ($ARGV[0] eq 'disable') { disable($ARGV[1]); }
   elsif ($ARGV[0] eq 'edit')    { edit($ARGV[1]); }
   elsif ($ARGV[0] eq 'enable')  { enable($ARGV[1]); }
   elsif ($ARGV[0] eq 'list') {
-    if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
+    if    ($ARGV[1] eq '--all') { list_all(); }
+    elsif ($ARGV[1] eq '--enabled')  { list_enabled(); }
     elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
-    else                             { list(); }
+    else                             { die("Unknown command $ARGV[1]") }
   }
 }
 else { list(); }
 
 sub list {
   print sprintf('%-22s%s', 'PLUGIN', 'STATE'), "\n";
-
-  my %merged = (%available, %enabled);
 
   foreach my $plugin (sort(keys(%merged))) {
     print sprintf('%-22s', $plugin);
@@ -93,6 +92,12 @@ sub list {
   }
 }
 
+sub list_all {
+  foreach my $file (sort(keys %available)) {
+    print "$file\n";
+  }
+}
+
 sub list_enabled {
   foreach my $file (sort(keys %enabled)) {
     print "$file\n" if $enabled{$file} && $available{$file};
@@ -107,7 +112,7 @@ sub list_disabled {
 
 sub enable {
   my $plugin = $_[0];
-  my $filename = $available{$plugin} or die("$plugin is unknown\n");
+  my $filename = basename($available{$plugin}) or die("$plugin is unknown\n");
 
   # $file may be not the exact filename.
   symlink(abs2rel("$availdir/$filename"), "$argsdir/$filename")
@@ -116,7 +121,7 @@ sub enable {
 
 sub disable {
   my $plugin = $_[0];
-  my $filename = $enabled{$plugin} or die("$plugin is unknown\n");
+  my $filename = basename($enabled{$plugin}) or die("$plugin is unknown\n");
 
   # Unlink only if it is a symlink or --force is set.
   if (-l "$argsdir/$filename" or $force) {
@@ -129,8 +134,8 @@ sub disable {
 
 sub edit {
   my $plugin   = $_[0];
-  my $filename = $available{$plugin} or die("$plugin is unknown\n");
-  my $filepath = "$availdir/$filename";
+  my $filename = basename($merged{$plugin}) or die("$plugin is unknown\n");
+  my $filepath = $merged{$plugin};
 
   # Open new tempfile writable, enable autodelete before program exit
   my ($tmp_write, $tmpfile) = tempfile("/tmp/$plugin-XXXX", UNLINK => 1);
@@ -150,7 +155,7 @@ sub edit {
   my $reachedPlugin;
   while (<$vdr>) {
     $reachedPlugin = 1 if $_ =~ /^$plugin/;
-    print $tmp_write "#$PROGNAME $_" if $reachedPlugin;
+    print $tmp_write "#$PROGNAME $_" if $reachedPlugin or $plugin eq 'vdr';
   }
   close($vdr);              # Close STDOUT of vdr
 
