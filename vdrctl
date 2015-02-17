@@ -59,15 +59,18 @@ if ($ARGV[1]) {
   elsif ($ARGV[0] eq 'edit')    { edit($ARGV[1]); }
   elsif ($ARGV[0] eq 'enable')  { enable($ARGV[1]); }
   elsif ($ARGV[0] eq 'list') {
-    if    ($ARGV[1] eq '--all') { list_all(); }
-    elsif ($ARGV[1] eq '--enabled')  { list_enabled(); }
+    if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
     elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
     else                             { die("Unknown command $ARGV[1]") }
   }
 }
-else { list(); }
+elsif ($ARGV[0]) {
+  if    ($ARGV[0] eq 'list')   { list(); }
+  elsif ($ARGV[0] eq 'status') { status(); }
+}
+else { status(); }
 
-sub list {
+sub status {
   print sprintf('%-22s%s', 'PLUGIN', 'STATE'), "\n";
 
   foreach my $plugin (sort(keys(%merged))) {
@@ -92,7 +95,7 @@ sub list {
   }
 }
 
-sub list_all {
+sub list {
   foreach my $file (sort(keys %available)) {
     print "$file\n";
   }
@@ -189,11 +192,11 @@ __END__
 
 =head1 NAME
 
-vdrctl - Control vdr argument files
+vdrctl - Control vdr config-files
 
 =head1 DESCRIPTION
 
-B<vdrctl> adds/removes symlinks or list the available or active plugins of vdr.
+B<vdrctl> adds/removes symlinks or list the available or active config-files of vdr.
 
 In the following ARGSDIR is the configured conf.d path or read by pkg-config
 
@@ -205,13 +208,13 @@ AVAILDIR is /etc/vdr/conf.d/../conf.avail
 
 =over 5
 
-=item B<--argsdir>=DIR
+=item B<--argsdir>=<directory>
 
-read files from <directory> instead of ARGSDIR
+read config-files from <directory> instead of ARGSDIR
 
-=item B<--availdir>=DIR
+=item B<--availdir>=<directory>
 
-read files from <directory> instead of AVAILDIR
+read config-files from <directory> instead of AVAILDIR
 
 =item B<--help>
 
@@ -225,30 +228,34 @@ Output version information and exit
 
 =item B<list>
 
-Show all available plugins and their current status (enabled, disabled, static)
+Show all available config-files
 
 =over 5
 
 =item B<--enabled>
 
-Print an unformatted list of all enabled plugins
+Show all enabled config-files
 
 =item B<--disabled>
 
-Print an unformatted list of all disabled plugins
+Show all disabled config-files
 
 =back
 
 =item B<enable> <filename>
 
-Enable one plugin by creating a symlink to the ARGSDIR
+Enable the config-file by creating a symlink to the ARGSDIR
 
 =item B<disable> <filename>
 
-Disable one plugin by removing the symlink from ARGSDIR
+Disable the config-file by removing the symlink from ARGSDIR
+
+=item B<status>
+
+Show all available config-files and their current status (enabled, disabled, static)
 
 =item B<edit> <filename>
 
-Start an editor to allow modifications to the selected configfile
+Start an editor to allow modifications to the selected config-file
 
 =back
