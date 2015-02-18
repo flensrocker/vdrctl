@@ -55,9 +55,9 @@ foreach my $file (<"$argsdir/*.conf">) {
 my %merged = (%available, %enabled);
 
 if ($ARGV[1]) {
-  if    ($ARGV[0] eq 'disable') { disable($ARGV[1]); }
+  if    ($ARGV[0] eq 'disable') { shift(@ARGV); disable(@ARGV); }
   elsif ($ARGV[0] eq 'edit')    { edit($ARGV[1]); }
-  elsif ($ARGV[0] eq 'enable')  { enable($ARGV[1]); }
+  elsif ($ARGV[0] eq 'enable')  { shift(@ARGV); enable(@ARGV); }
   elsif ($ARGV[0] eq 'list') {
     if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
     elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
@@ -116,24 +116,26 @@ sub list_disabled {
 }
 
 sub enable {
-  my $plugin = $_[0];
-  my $filename = basename($available{$plugin}) or die("$plugin is unknown\n");
+  foreach my $plugin (@_) {
+    my $filename = basename($available{$plugin}) or die("$plugin is unknown\n");
 
-  # $file may be not the exact filename.
-  symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$filename")
-    or die "Cannot create symlink to $argsdir/$filename\n";
+    # $file may be not the exact filename.
+    symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$filename")
+      or die "Cannot create symlink to $argsdir/$filename\n";
+  }
 }
 
 sub disable {
-  my $plugin = $_[0];
-  my $filename = basename($enabled{$plugin}) or die("$plugin is unknown\n");
+  foreach my $plugin (@_) {
+    my $filename = basename($enabled{$plugin}) or die("$plugin is unknown\n");
 
-  # Unlink only if it is a symlink or --force is set.
-  if (-l "$argsdir/$filename" or $force) {
-    unlink("$argsdir/$filename") or die("Cannot delete $filename\n");
-  }
-  else {
-    die("$filename is not a symlink. Use --force to disable it anyways\n");
+    # Unlink only if it is a symlink or --force is set.
+    if (-l "$argsdir/$filename" or $force) {
+      unlink("$argsdir/$filename") or die("Cannot delete $filename\n");
+    }
+    else {
+      die("$filename is not a symlink. Use --force to disable it anyways\n");
+    }
   }
 }
 
@@ -244,13 +246,13 @@ Show all disabled config-files
 
 =back
 
-=item B<enable> <filename>
+=item B<enable> <filename> ...
 
-Enable the config-file by creating a symlink to the ARGSDIR
+Enable the config-files by creating symlinks at the ARGSDIR
 
-=item B<disable> <filename>
+=item B<disable> <filename> ...
 
-Disable the config-file by removing the symlink from ARGSDIR
+Disable the config-files by removing the symlinks from ARGSDIR
 
 =item B<status>
 
