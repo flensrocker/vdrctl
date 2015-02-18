@@ -61,12 +61,14 @@ if ($ARGV[1]) {
   elsif ($ARGV[0] eq 'list') {
     if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
     elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
-    else                             { die("Unknown command $ARGV[1]") }
+    else                             { die("Unknown parameter $ARGV[1]") }
   }
+  else                          { die("Unknown command $ARGV[0]") }
 }
 elsif ($ARGV[0]) {
   if    ($ARGV[0] eq 'list')   { list(); }
   elsif ($ARGV[0] eq 'status') { status(); }
+  else                         { die("Unknown command $ARGV[0]") }
 }
 else { status(); }
 
@@ -118,7 +120,7 @@ sub enable {
   my $filename = basename($available{$plugin}) or die("$plugin is unknown\n");
 
   # $file may be not the exact filename.
-  symlink(abs2rel("$availdir/$filename"), "$argsdir/$filename")
+  symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$filename")
     or die "Cannot create symlink to $argsdir/$filename\n";
 }
 
