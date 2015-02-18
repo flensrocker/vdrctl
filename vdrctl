@@ -120,7 +120,7 @@ sub enable {
   my $filename = basename($available{$plugin}) or die("$plugin is unknown\n");
 
   # $file may be not the exact filename.
-  symlink(abs2rel("$availdir/$filename"), "$argsdir/$filename")
+  symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$filename")
     or die "Cannot create symlink to $argsdir/$filename\n";
 }
 
