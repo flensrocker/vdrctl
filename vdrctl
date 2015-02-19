@@ -30,61 +30,62 @@ GetOptions(
   "version"    => \&version
 ) or die("Error in command line arguments\n");
 
-my %available;
-foreach my $file (<"$availdir/*.conf">) {
+{
+  my %configfiles;
+  foreach my $file (<"$availdir/*.conf">) {
 
-  # Try 50-name.conf
-  my ($priority, $name) = basename($file) =~ /^([0-9]*?)-(.*?).conf$/;
+    # Try 50-name.conf
+    my ($priority, $name) = basename($file) =~ /^([0-9]*?)-(.*?).conf$/;
 
-  # Try name.conf
-  ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
-  $available{$name} = $file;
-}
-
-my %enabled;
-foreach my $file (<"$argsdir/*.conf">) {
-
-  # Try 50-name.conf
-  my ($priority, $name) = basename($file) =~ /^([0-9]*?)-(.*?).conf$/;
-
-  # Try name.conf
-  ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
-  $enabled{$name} = $file;
-}
-
-my %merged = (%available, %enabled);
-
-if ($ARGV[1]) {
-  if    ($ARGV[0] eq 'disable') { shift(@ARGV); disable(@ARGV); }
-  elsif ($ARGV[0] eq 'edit')    { edit($ARGV[1]); }
-  elsif ($ARGV[0] eq 'enable')  { shift(@ARGV); enable(@ARGV); }
-  elsif ($ARGV[0] eq 'list') {
-    if    ($ARGV[1] eq '--enabled')  { list_enabled(); }
-    elsif ($ARGV[1] eq '--disabled') { list_disabled(); }
-    else                             { die("Unknown parameter $ARGV[1]") }
+    # Try name.conf
+    ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+    $configfiles{$name}{available} = $file;
   }
-  else                          { die("Unknown command $ARGV[0]") }
+
+  foreach my $file (<"$argsdir/*.conf">) {
+
+    # Try 50-name.conf
+    my ($priority, $name) = basename($file) =~ /^([0-9]*?)-(.*?).conf$/;
+
+    # Try name.conf
+    ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+    $configfiles{$name}{enabled} = $file;
+  }
+
+  if ($ARGV[1]) {
+    if ($ARGV[0] eq 'disable') { shift(@ARGV); disable(\%configfiles, @ARGV); }
+    elsif ($ARGV[0] eq 'edit') { edit(\%configfiles, $ARGV[1]); }
+    elsif ($ARGV[0] eq 'enable') { shift(@ARGV); enable(\%configfiles, @ARGV); }
+    elsif ($ARGV[0] eq 'list') {
+      if ($ARGV[1] eq '--enabled') { list_enabled(\%configfiles); }
+      elsif ($ARGV[1] eq '--disabled') {
+        list_disabled(\%configfiles);
+      }
+      else { die("Unknown parameter $ARGV[1]\n") }
+    }
+    else { die("Unknown command $ARGV[0]\n") }
+  }
+  elsif ($ARGV[0]) {
+    if    ($ARGV[0] eq 'list')   { list(); }
+    elsif ($ARGV[0] eq 'status') { status(\%configfiles); }
+    else                         { die("Unknown command $ARGV[0]\n") }
+  }
+  else { status(\%configfiles); }
+
 }
-elsif ($ARGV[0]) {
-  if    ($ARGV[0] eq 'list')   { list(); }
-  elsif ($ARGV[0] eq 'status') { status(); }
-  else                         { die("Unknown command $ARGV[0]") }
-}
-else { status(); }
 
 sub status {
+  my $configfiles_ref = shift;
   print sprintf('%-22s%s', 'PLUGIN', 'STATE'), "\n";
 
-  foreach my $plugin (sort(keys(%merged))) {
+  foreach my $plugin (sort(keys(%$configfiles_ref))) {
     print sprintf('%-22s', $plugin);
 
-    if (!$enabled{$plugin}) {
-
+    if (!$configfiles_ref->{$plugin}->{enabled}) {
       # Not in $argsdir --> disabled
       print colored['bright_red bold'], 'disabled';
     }
-    elsif (!$available{$plugin}) {
-
+    elsif (!$configfiles_ref->{$plugin}->{available}) {
       # Not in $availdir --> static
       print 'static';
     }
@@ -98,26 +99,33 @@ sub status {
 }
 
 sub list {
-  foreach my $file (sort(keys %available)) {
+  my $configfiles_ref = shift;
+  foreach my $file (sort(keys %$configfiles_ref)) {
     print "$file\n";
   }
 }
 
 sub list_enabled {
-  foreach my $file (sort(keys %enabled)) {
-    print "$file\n" if $enabled{$file} && $available{$file};
+  my $configfiles_ref = shift;
+  foreach my $file (sort(keys %$configfiles_ref)) {
+    print "$file\n"
+      if $configfiles_ref->{$file}->{enabled}
+      && $configfiles_ref->{$file}->{available};
   }
 }
 
 sub list_disabled {
-  foreach my $file (sort(keys %available)) {
-    print "$file\n" unless $enabled{$file};
+  my $configfiles_ref = shift;
+  foreach my $file (sort(keys %$configfiles_ref)) {
+    print "$file\n" unless $configfiles_ref->{$file}->{enabled};
   }
 }
 
 sub enable {
+  my $configfiles_ref = shift;
   foreach my $plugin (@_) {
-    my $filename = basename($available{$plugin}) or die("$plugin is unknown\n");
+    my $filename = basename($configfiles_ref->{$plugin}->{available})
+      or die("$plugin is unknown\n");
 
     # $file may be not the exact filename.
     symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$filename")
@@ -126,8 +134,10 @@ sub enable {
 }
 
 sub disable {
+  my $configfiles_ref = shift;
   foreach my $plugin (@_) {
-    my $filename = basename($enabled{$plugin}) or die("$plugin is unknown\n");
+    my $filename = basename($configfiles_ref->{$plugin}->{enabled})
+      or die("$plugin is unknown\n");
 
     # Unlink only if it is a symlink or --force is set.
     if (-l "$argsdir/$filename" or $force) {
@@ -140,9 +150,13 @@ sub disable {
 }
 
 sub edit {
-  my $plugin   = $_[0];
-  my $filename = basename($merged{$plugin}) or die("$plugin is unknown\n");
-  my $filepath = $merged{$plugin};
+  my $configfiles_ref = shift;
+  my $plugin          = shift;
+
+  my $filepath;
+  $filepath = $configfiles_ref->{$plugin}->{available}
+    or $filepath = $configfiles_ref->{$plugin}->{enabled}
+    or die("$plugin is unknown\n");
 
   # Open new tempfile writable, enable autodelete before program exit
   my ($tmp_write, $tmpfile) = tempfile("/tmp/$plugin-XXXX", UNLINK => 1);
