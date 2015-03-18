@@ -66,7 +66,7 @@ GetOptions(
     else { die("Unknown command $ARGV[0]\n") }
   }
   elsif ($ARGV[0]) {
-    if    ($ARGV[0] eq 'list')   { list(); }
+    if    ($ARGV[0] eq 'list')   { list(\%configfiles); }
     elsif ($ARGV[0] eq 'status') { status(\%configfiles); }
     else                         { die("Unknown command $ARGV[0]\n") }
   }
