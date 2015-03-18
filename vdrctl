@@ -10,7 +10,7 @@ use Pod::PlainText;
 use Term::ANSIColor;
 
 my $PROGNAME = 'vdrctl';
-my $VERSION  = '0.0.3';
+my $VERSION  = '0.1.0';
 
 my $argsdir = `pkg-config --variable argsdir vdr`;
 chomp($argsdir);
