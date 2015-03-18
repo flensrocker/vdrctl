@@ -242,7 +242,11 @@ Display this help and exit
 
 Output version information and exit
 
+=back
+
 =head2 Commands
+
+=over 5
 
 =item B<list>
 
