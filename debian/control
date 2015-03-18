@@ -1,0 +1,13 @@
+Source: vdrctl
+Maintainer: Christopher Reimer <mail@creimer.net>
+Uploaders: Lars Hanisch <dvb@flensrocker.de>
+Section: video
+Priority: optional
+Standards-Version: 3.9.2
+Build-Depends: debhelper (>= 9)
+
+Package: vdrctl
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, perl, pkg-config, vdr
+Description: A tool to manage the conf.d-files of vdr
+

@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	dh_auto_build
+	pod2man --utf8 vdrctl vdrctl.1
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -f vdrctl.1
+

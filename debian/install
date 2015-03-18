@@ -1,0 +1,2 @@
+vdrctl                    usr/bin/
+bash-completion/vdrctl    etc/bash_completion.d/
