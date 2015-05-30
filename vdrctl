@@ -10,7 +10,7 @@ use Pod::PlainText;
 use Term::ANSIColor;
 
 my $PROGNAME = 'vdrctl';
-my $VERSION  = '0.1.0';
+my $VERSION  = '0.1.1';
 
 my $argsdir = `pkg-config --variable argsdir vdr`;
 chomp($argsdir);
@@ -21,11 +21,15 @@ my $availdir = "$argsdir/../conf.avail";
 my $editor = $ENV{EDITOR};
 $editor = 'vi' unless $editor;
 
+my $default_priority = 50;
+
 my $force;
+my $force_prio;
 GetOptions(
   "argsdir=s"  => \$argsdir,
   "availdir=s" => \$availdir,
   "force"      => \$force,
+  "priority=i" => \$force_prio,
   "help"       => \&help,
   "version"    => \&version
 ) or die("Error in command line arguments\n");
@@ -39,7 +43,7 @@ GetOptions(
 
     # Try name.conf
     ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
-    ($priority) = 50 unless $priority;
+    ($priority) = $default_priority unless $priority;
 
     $configfiles{$name}{available} = $file;
     $configfiles{$name}{priority} = $priority;
@@ -52,7 +56,7 @@ GetOptions(
 
     # Try name.conf
     ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
-    ($priority) = 50 unless $priority;
+    ($priority) = $default_priority unless $priority;
 
     $configfiles{$name}{enabled} = $file;
     $configfiles{$name}{priority} = $priority;
@@ -134,10 +138,19 @@ sub enable {
   foreach my $plugin (@_) {
     my $filename = basename($configfiles_ref->{$plugin}->{available})
       or die("$plugin is unknown\n");
+    my $priority = basename($configfiles_ref->{$plugin}->{priority});
+    if ($force_prio) {
+      $priority = $force_prio;
+    }
 
     # $file may be not the exact filename.
-    symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$filename")
-      or die "Cannot create symlink to $argsdir/$filename\n";
+    unless ($configfiles_ref->{$plugin}->{enabled} and !$force_prio) {
+      symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$priority-$plugin.conf")
+        or die "Cannot create symlink to $argsdir/$priority-$plugin.conf\n";
+    }
+    else {
+      die("$availdir/$filename is already linked to $argsdir");
+    }
   }
 }
 
@@ -233,6 +246,14 @@ AVAILDIR is /etc/vdr/conf.d/../conf.avail
 =head2 Global options
 
 =over 5
+
+=item B<--force>
+
+force deleting static files in ARGSDIR
+
+=item B<--priority>=<n>
+
+use <n> as priority instead of the one coded in the filename
 
 =item B<--argsdir>=<directory>
 
