@@ -39,7 +39,10 @@ GetOptions(
 
     # Try name.conf
     ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+    ($priority) = 50 unless $priority;
+
     $configfiles{$name}{available} = $file;
+    $configfiles{$name}{priority} = $priority;
   }
 
   foreach my $file (<"$argsdir/*.conf">) {
@@ -49,7 +52,10 @@ GetOptions(
 
     # Try name.conf
     ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+    ($priority) = 50 unless $priority;
+
     $configfiles{$name}{enabled} = $file;
+    $configfiles{$name}{priority} = $priority;
   }
 
   if ($ARGV[1]) {
@@ -76,23 +82,25 @@ GetOptions(
 
 sub status {
   my $configfiles_ref = shift;
-  print sprintf('%-22s%s', 'PLUGIN', 'STATE'), "\n";
+  print sprintf('%-22s%-10s%s', 'PLUGIN', 'STATE', 'PRIORITY'), "\n";
 
   foreach my $plugin (sort(keys(%$configfiles_ref))) {
     print sprintf('%-22s', $plugin);
 
     if (!$configfiles_ref->{$plugin}->{enabled}) {
       # Not in $argsdir --> disabled
-      print colored['bright_red bold'], 'disabled';
+      print colored['bright_red bold'], sprintf('%-10s', 'disabled');
     }
     elsif (!$configfiles_ref->{$plugin}->{available}) {
       # Not in $availdir --> static
-      print 'static';
+      print sprintf('%-10s', 'static');
     }
     else {
       # In both directories --> enabled
-      print colored['bright_green bold'], 'enabled';
+      print colored['bright_green bold'], sprintf('%-10s', 'enabled');
     }
+
+    print $configfiles_ref->{$plugin}->{priority};
 
     print "\n";
   }
