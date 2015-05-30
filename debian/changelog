@@ -1,3 +1,10 @@
+vdrctl (0.1.1-0yavdr0~trusty) trusty; urgency=medium
+
+  * new version
+    don't create links if file is already linked with any priority
+
+ -- Lars Hanisch <dvb@flensrocker.de>  Sat, 30 May 2015 16:19:38 +0200
+
 vdrctl (0.0.3-0yavdr0~trusty) trusty; urgency=medium
 
   * Initial release.
