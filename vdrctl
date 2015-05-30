@@ -10,7 +10,7 @@ use Pod::PlainText;
 use Term::ANSIColor;
 
 my $PROGNAME = 'vdrctl';
-my $VERSION  = '0.0.3';
+my $VERSION  = '0.1.1';
 
 my $argsdir = `pkg-config --variable argsdir vdr`;
 chomp($argsdir);
@@ -21,11 +21,15 @@ my $availdir = "$argsdir/../conf.avail";
 my $editor = $ENV{EDITOR};
 $editor = 'vi' unless $editor;
 
+my $default_priority = 50;
+
 my $force;
+my $force_prio;
 GetOptions(
   "argsdir=s"  => \$argsdir,
   "availdir=s" => \$availdir,
   "force"      => \$force,
+  "priority=i" => \$force_prio,
   "help"       => \&help,
   "version"    => \&version
 ) or die("Error in command line arguments\n");
@@ -39,7 +43,10 @@ GetOptions(
 
     # Try name.conf
     ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+    ($priority) = $default_priority unless $priority;
+
     $configfiles{$name}{available} = $file;
+    $configfiles{$name}{priority} = $priority;
   }
 
   foreach my $file (<"$argsdir/*.conf">) {
@@ -49,7 +56,10 @@ GetOptions(
 
     # Try name.conf
     ($name) = basename($file) =~ /^(.*?).conf$/ unless $name;
+    ($priority) = $default_priority unless $priority;
+
     $configfiles{$name}{enabled} = $file;
+    $configfiles{$name}{priority} = $priority;
   }
 
   if ($ARGV[1]) {
@@ -76,23 +86,25 @@ GetOptions(
 
 sub status {
   my $configfiles_ref = shift;
-  print sprintf('%-22s%s', 'PLUGIN', 'STATE'), "\n";
+  print sprintf('%-22s%-10s%s', 'PLUGIN', 'STATE', 'PRIORITY'), "\n";
 
   foreach my $plugin (sort(keys(%$configfiles_ref))) {
     print sprintf('%-22s', $plugin);
 
     if (!$configfiles_ref->{$plugin}->{enabled}) {
       # Not in $argsdir --> disabled
-      print colored['bright_red bold'], 'disabled';
+      print colored['bright_red bold'], sprintf('%-10s', 'disabled');
     }
     elsif (!$configfiles_ref->{$plugin}->{available}) {
       # Not in $availdir --> static
-      print 'static';
+      print sprintf('%-10s', 'static');
     }
     else {
       # In both directories --> enabled
-      print colored['bright_green bold'], 'enabled';
+      print colored['bright_green bold'], sprintf('%-10s', 'enabled');
     }
+
+    print $configfiles_ref->{$plugin}->{priority};
 
     print "\n";
   }
@@ -126,10 +138,19 @@ sub enable {
   foreach my $plugin (@_) {
     my $filename = basename($configfiles_ref->{$plugin}->{available})
       or die("$plugin is unknown\n");
+    my $priority = basename($configfiles_ref->{$plugin}->{priority});
+    if ($force_prio) {
+      $priority = $force_prio;
+    }
 
     # $file may be not the exact filename.
-    symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$filename")
-      or die "Cannot create symlink to $argsdir/$filename\n";
+    unless ($configfiles_ref->{$plugin}->{enabled} and !$force_prio) {
+      symlink(abs2rel("$availdir/$filename", $argsdir), "$argsdir/$priority-$plugin.conf")
+        or die "Cannot create symlink to $argsdir/$priority-$plugin.conf\n";
+    }
+    else {
+      die("$availdir/$filename is already linked to $argsdir");
+    }
   }
 }
 
@@ -225,6 +246,14 @@ AVAILDIR is /etc/vdr/conf.d/../conf.avail
 =head2 Global options
 
 =over 5
+
+=item B<--force>
+
+force deleting static files in ARGSDIR
+
+=item B<--priority>=<n>
+
+use <n> as priority instead of the one coded in the filename
 
 =item B<--argsdir>=<directory>
 
